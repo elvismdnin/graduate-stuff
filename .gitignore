@@ -122,7 +122,6 @@ doc/api/
 *.dex
 
 # Java class files
-*.class
 
 # Generated files
 bin/
