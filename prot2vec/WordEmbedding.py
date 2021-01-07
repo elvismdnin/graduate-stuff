@@ -13,6 +13,7 @@ nltk.download('stopwords')
 
 BC4 = pd.read_excel('BC4r.xlsx')
 
+
 def clean_tokens(tokens):
   sw = set(stopwords.words('english'))
   clean = []
@@ -21,6 +22,7 @@ def clean_tokens(tokens):
     if lower not in sw and lower:
       clean.append(lower.upper())
   return clean
+
 
 def gen_tokens_of_line(token_id, id_token, window_size, entry, prot_names, subcellular_loc, interacts_with, function_cc, polymorph, go_bio, go_cel, go_molec, domain_cc):
   words = []
@@ -65,6 +67,7 @@ def gen_tokens_of_line(token_id, id_token, window_size, entry, prot_names, subce
   window_size.append(len(words))
   return words
 
+
 token_id = dict()
 id_token = dict()
 BC4 = BC4.fillna('')
@@ -97,6 +100,7 @@ cbow.add(Lambda(lambda x: K.mean(x, axis=1), output_shape=(embed_output,)))
 cbow.add(Dense(vocab_size, activation='softmax'))
 cbow.compile(loss='categorical_crossentropy', optimizer='rmsprop')
 
+
 def generate_context_word(word_row, token_id, window_size):
   dimension = len(token_id)
   word_vecs = []
@@ -116,7 +120,8 @@ def generate_context_word(word_row, token_id, window_size):
         inp.reshape(1, inp.shape[0]),
         out.reshape(1, dimension)
     )
-    
+
+
 for epoch in range(0, 8):
     loss = 0.
     print('\nStarting training for', len(BC4), 'rows')

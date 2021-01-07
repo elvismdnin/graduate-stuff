@@ -1,59 +1,93 @@
 import pandas as pd
 import numpy as np
-from sklearn import tree
+import re
 import graphviz
+from sklearn import tree
 
-vectorscomp = dict()
-vectorsprot = dict()
-dotprot = dict()
-BC2 = pd.read_excel('BC2r.xlsx')
-BC2WE = pd.read_csv('BC2_word_embeddings.csv')
+BC2 = pd.read_excel('Data/BC2r.xlsx')
 
 
-def one_hot_encoding_of_length(length):
-    out = []
-    values = list(dotprot.keys())
-    labels = []
-    for i in range(0, length):
-        vec = np.zeros(length)
-        vec[i] = 1.0
-        out.append(vec)
-        labels.append(values[i])
-    return out, labels
+def gen_tokens_functions(token_id, id_token, window_size, go_bio, name, interacts_with):
+    words = go_bio.split('; ')
+
+    interaction = re.sub(';', '', interacts_with)
+    interaction = interaction.split(' ')
+
+    for word in words:
+        if token_id.get(word) is None:
+            token_id[word] = len(token_id)
+            id_token[len(token_id)] = word
+
+    window_size.append(len(words))
+    return [words, interaction, name]
 
 
-def gen_vectors_complete(protein, vector):
-    vectorscomp[protein] = np.array(vector)
+def generate_train_words(bioprocesses, interactions, names, token_id, interest_functions):
+    window = len(token_id)
+    word_vecs = []
+    has_angiogenesis = []
+    angiogenesis_prots = []
+    index = 0
+
+    for word_row, name in zip(bioprocesses, names):
+        row = np.zeros(window)
+        row_has_angiogenesis = False
+
+        for function in word_row:
+            index = token_id[function]
+            if index in interest_functions:
+                row_has_angiogenesis = True
+                angiogenesis_prots.append(name)
+            else:
+                row[index] = 1.0
+
+        word_vecs.append(row)
+        has_angiogenesis.append(row_has_angiogenesis)
+
+    for i, interacts in enumerate(interactions):
+        for connection in interacts:
+            if connection in angiogenesis_prots:
+                has_angiogenesis[i] = True
+
+    return word_vecs, np.array(has_angiogenesis)
 
 
-def gen_vectors_prot(protein, vector):
-    vectorsprot[protein] = np.array(vector)
+token_id = dict()
+id_token = dict()
+BC2 = BC2.fillna('')
+window_size = []
 
+tokens = BC2.apply(lambda row: gen_tokens_functions(
+    token_id,
+    id_token,
+    window_size,
+    row['Gene ontology (biological process)'],
+    row['Entry'],
+    row['Interacts with']
+), axis=1)
 
-proteins = BC2['Entry'].tolist()
-vectorsdp = BC2WE[BC2WE['word'].isin(proteins)]
-vectorsdp = vectorsdp.fillna(0.0)
+bioprocesses = [item[0] for item in tokens]
+interactions = [item[1] for item in tokens]
+names = [item[2] for item in tokens]
 
-BC2WE.fillna(0.0).apply(lambda row: gen_vectors_complete(row['word'], row[1:]), raw=True, axis=1)
-vectorsdp.apply(lambda row: gen_vectors_prot(row['word'], row[1:]), raw=True, axis=1)
+window_size = sorted(window_size, reverse=True)[0]
+vocab_size = len(id_token)
 
-#print(BC2WE.loc[8742]) #"Angiogenic'
-#print(vectorscomp['ANGIOGENIC'])
+interest_functions = [token_id['angiogenesis [GO:0001525]'],
+                      token_id['positive regulation of angiogenesis [GO:0045766]'],
+                      token_id['negative regulation of angiogenesis [GO:0016525]'],
+                      token_id['positive regulation of sprouting angiogenesis [GO:1903672]'],
+                      token_id['regulation of angiogenesis [GO:0045765]'],
+                      token_id['positive regulation of cell migration involved in sprouting angiogenesis [GO:0090050]']]
 
-dotprot_len = 0
-for prot, vec in vectorsprot.items():
-    dotprot[prot] = vec.dot(vectorscomp['ANGIOGENIC'])
-    dotprot_len += 1
+X, Y = generate_train_words(bioprocesses, interactions, names, token_id, interest_functions)
 
-X, labels = one_hot_encoding_of_length(dotprot_len)
-Y = list(dotprot.values())
+labels = sorted(token_id.items(), key=lambda x: x[1])
+labels = [item[0] for item in labels]
 
-angiogenesis_tree = tree.DecisionTreeRegressor()
+angiogenesis_tree = tree.DecisionTreeClassifier(max_depth=5)
 angiogenesis_tree.fit(X, Y)
 
-
-dot_data = tree.export_graphviz(angiogenesis_tree, out_file=None, feature_names=labels)
+dot_data = tree.export_graphviz(angiogenesis_tree, out_file=None, feature_names=labels, class_names=["Não angiogênese", "Angiogênese"])
 graph = graphviz.Source(dot_data)
 graph.render("Angiogenesis")
-
-print(sorted(dotprot.items(), key=lambda x: x[1]))
